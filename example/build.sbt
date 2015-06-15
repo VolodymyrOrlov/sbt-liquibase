@@ -7,16 +7,17 @@ version := "1.0"
 scalaVersion := "2.10.4"
 
 libraryDependencies ++= Seq(
-  "mysql"         % "mysql-connector-java" % "5.1.24",
-  "com.sungevity.dbschemas" %% "cp" % "1.0+"
+  "mysql"         % "mysql-connector-java" % "5.1.24"
 )
 
-dbUsername in sbtLiquibase := sys.env.get("DB_USERNAME").getOrElse("")
+dbUsername in sbtLiquibase := env("DB_USERNAME")
 
-changeLogFile in sbtLiquibase := "changelog.sql"
+dbPassword in sbtLiquibase := env("DB_PASSWORD")
 
-dbPassword in sbtLiquibase := "root"
+dbURL in sbtLiquibase := env("DB_URL")
 
-dbURL in sbtLiquibase := "jdbc:mysql://localhost/testl"
+changeLogFile in sbtLiquibase := env("CHANGELOG")
 
-dbDriver in sbtLiquibase := "com.mysql.jdbc.Driver"
+dbDriver in sbtLiquibase := env("DB_DRIVER")
+
+def env(key: String) = sys.env.get(key).getOrElse(throw new IllegalStateException(s"Please set $key environment variable."))
