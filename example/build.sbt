@@ -18,6 +18,6 @@ dbURL in sbtLiquibase := env("DB_URL")
 
 changeLogFile in sbtLiquibase := env("CHANGELOG")
 
-dbDriver in sbtLiquibase := env("DB_DRIVER")
+dbDriver in sbtLiquibase := "com.mysql.jdbc.Driver"
 
 def env(key: String) = sys.env.get(key).getOrElse(throw new IllegalStateException(s"Please set $key environment variable."))
