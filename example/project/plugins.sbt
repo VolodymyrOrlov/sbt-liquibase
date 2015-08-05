@@ -1,3 +1,3 @@
 logLevel := Level.Warn
 
-addSbtPlugin("com.github.vorlov" % "sbt-liquibase" % "0.1.0")
+addSbtPlugin("com.sungevity.sbt" % "sbt-liquibase" % "0.1.0")

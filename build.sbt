@@ -2,7 +2,7 @@ import bintray.Keys._
 
 name := "sbt-liquibase"
 
-organization := "com.github.vorlov"
+organization := "com.sungevity.sbt"
 
 sbtPlugin := true
 
@@ -18,7 +18,7 @@ bintraySettings
 
 bintrayPublishSettings
 
-bintrayOrganization in bintray := Some("vorlov")
+bintrayOrganization in bintray := Some("sungevity")
 
 repository in  bintray := "sbt-plugins"
 

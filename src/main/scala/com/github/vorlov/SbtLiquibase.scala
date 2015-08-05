@@ -1,4 +1,4 @@
-package com.github.vorlov
+package com.sungevity.sbt
 
 import java.io.{File, OutputStreamWriter}
 import java.nio.file.{Paths, Path, StandardCopyOption, Files}
@@ -6,7 +6,7 @@ import java.nio.file.{Paths, Path, StandardCopyOption, Files}
 import liquibase.Liquibase
 import liquibase.database.Database
 import liquibase.integration.commandline.CommandLineUtils
-import liquibase.resource.{ClassLoaderResourceAccessor, FileSystemResourceAccessor}
+import liquibase.resource.{ResourceAccessor, ClassLoaderResourceAccessor, FileSystemResourceAccessor}
 import sbt.KeyRanks._
 import sbt.Keys._
 import sbt._
@@ -14,58 +14,71 @@ import sbt.classpath.ClasspathUtilities
 
 object SbtLiquibase extends AutoPlugin {
 
-  class RichLiquibase(liquibase: Liquibase) {
+  implicit class RichLiquibase(liquibase: Liquibase) {
     def execAndClose(f: (Liquibase) => Unit): Unit = {
       try { f(liquibase) } finally { liquibase.getDatabase.close() }
     }
   }
-  implicit def RichLiquibase(liquibase: Liquibase): RichLiquibase = new RichLiquibase(liquibase)
 
   object autoImport {
 
-    val update = TaskKey[Unit]("up", "Run a liquibase migration")
 
-    val sbtLiquibase = TaskKey[String]("sbt-liquibase", "sbt-liquibase is an interface for the sbt-liquibase package service")
+    def mysql(url: String, username: String, password: String): LiquibaseTarget =
+      LiquibaseTarget(url, username, password, "com.mysql.jdbc.Driver", None)
 
-    val status = TaskKey[Unit]("status", "Print count of unrun change sets")
+    case class LiquibaseTarget(url: String, username: String, password: String, driver: String, changelog: Option[String]) {
 
-    val tag = InputKey[Unit]("tag", "Tags the current database state for future rollback")
+      def withChangelog(url: String) = this.copy(changelog = Some(url))
 
-    val doc = TaskKey[Unit]("db-doc", "Generates Javadoc-like documentation based on current database and change log")
+    }
 
-    val dropAll = TaskKey[Unit]("db-drop-all", "Drop all database objects owned by user")
+    val sbtLiquibase = TaskKey[Unit]("sbt-liquibase", "Parent key")
 
-    val changeLogFile = SettingKey[String]("changelog-file", "Liquibase changelog file.", ASetting)
+    val update = InputKey[Unit]("up", "Run a liquibase migration")
 
-    val dbUsername = SettingKey[String]("db-user", "Database user.", ASetting)
+    val updateAll = TaskKey[Unit]("up-all", "Run a liquibase migration")
 
-    val dbPassword = SettingKey[String]("db-password", "Database password.", ASetting)
+    val downgrade = InputKey[Unit]("down", "Rolls back the database to the the state is was when the tag was applied")
 
-    val dbURL = SettingKey[String]("db-url", "Database URL.", ASetting)
+    val downgradeAll = InputKey[Unit]("down-all", "Rolls back the database to the the state is was when the tag was applied")
 
-    val dbDriver = SettingKey[String]("db-driver", "Database driver.", ASetting)
+    val status = InputKey[Unit]("status", "Print count of unrun change sets")
 
-    val liquibaseContext = SettingKey[String]("liquibase-context", "changeSet contexts to execute")
+    val databases = SettingKey[Map[String, LiquibaseTarget]]("databases", "List of target databases.", ASetting)
 
-    lazy val liquibaseDatabase = TaskKey[Database]("liquibase-database", "the database")
-
-    lazy val liquibaseInstance = TaskKey[Liquibase]("liquibase", "liquibase object")
+    lazy val liquibaseInstances = TaskKey[Map[String, Liquibase]]("liquibase", "liquibase object")
 
     lazy val sbtLiquibaseSettings: Seq[Def.Setting[_]] = {
 
       Seq[Setting[_]](
 
-        liquibaseContext in sbtLiquibase := "",
 
-        liquibaseDatabase in sbtLiquibase := database((dbURL in sbtLiquibase).value, (dbUsername in sbtLiquibase).value, (dbPassword in sbtLiquibase).value, (dbDriver in sbtLiquibase).value, (dependencyClasspath in Compile).value),
+        liquibaseInstances in sbtLiquibase := (databases in sbtLiquibase).value.collect {
+          case (key, LiquibaseTarget(url, username, password, driver, changelog)) =>
+            key -> liquibaseInstance(changelog.getOrElse("changelog.xml"), database(url, username, password, driver, (dependencyClasspath in Compile).value), (fullClasspath in Compile).value)
+        },
 
-        liquibaseInstance in sbtLiquibase := liquibaseInstance((changeLogFile in sbtLiquibase).value, (liquibaseDatabase in sbtLiquibase).value, (fullClasspath in Compile).value),
+        update in sbtLiquibase := forSelected(Def.spaceDelimited("<arg>").parsed, (liquibaseInstances in sbtLiquibase).value){
+          _.execAndClose(_.update(""))
+        },
 
-        update in sbtLiquibase := (liquibaseInstance in sbtLiquibase).value.execAndClose(_.update((liquibaseContext in sbtLiquibase).value)),
+        downgrade in sbtLiquibase := forSelected(Def.spaceDelimited("<arg>").parsed, (liquibaseInstances in sbtLiquibase).value){
+          _.execAndClose(_.rollback(1, ""))
+        },
 
-        status in sbtLiquibase := (liquibaseInstance in sbtLiquibase).value.execAndClose(_.reportStatus(true, (liquibaseContext in sbtLiquibase).value, new OutputStreamWriter(System.out))),
+        downgradeAll in sbtLiquibase := forAll((liquibaseInstances in sbtLiquibase).value){
+          _.execAndClose(_.rollback(1, ""))
+        },
 
-        run <<= run in Compile dependsOn (update in sbtLiquibase),
+        updateAll in sbtLiquibase := forAll((liquibaseInstances in sbtLiquibase).value){
+          _.execAndClose(_.update(""))
+        },
+
+        status in sbtLiquibase := forSelected(Def.spaceDelimited("<arg>").parsed, (liquibaseInstances in sbtLiquibase).value){
+          _.reportStatus(true, "", new OutputStreamWriter(System.out))
+        },
+
+        run <<= run in Compile dependsOn (updateAll in sbtLiquibase),
         initialize <<= (target) { target =>
           System.setProperty("java.library.path", target.getAbsolutePath)
         }
@@ -73,20 +86,41 @@ object SbtLiquibase extends AutoPlugin {
 
     }
 
-    def liquibaseInstance(changeLogFile: String, db: Database, dependencyClasspath: Classpath) = {
-
-      assert(!changeLogFile.isEmpty, "Please set changeLogFile setting key.")
-
-      val resourceAccessor = Files.exists(Paths.get(changeLogFile)) match {
-        case true => new FileSystemResourceAccessor
-        case false => new ClassLoaderResourceAccessor(ClasspathUtilities.toLoader(dependencyClasspath.map(_.data)))
+    private def forSelected(selectedTargets: Seq[String], instances: Map[String, Liquibase])(action: (Liquibase) => Unit) {
+      instances.filter(v => selectedTargets.exists(v._1 == _)).collect {
+        case (key, instance) =>
+          action(instance)
       }
-
-      new Liquibase(changeLogFile, resourceAccessor, db)
     }
 
+    private def forAll(instances: Map[String, Liquibase])(action: (Liquibase) => Unit) {
 
-    def database(dbURL: String, dbUsername: String, dbPassword: String,
+      instances.collect {
+        case (key, instance) =>
+          action(instance)
+      }
+
+    }
+
+    private def identifyChangelogLocation(url: String, cp: Classpath): (String, ResourceAccessor) = {
+
+      val resourceAccessor = Files.exists(Paths.get(url)) match {
+        case true => new FileSystemResourceAccessor
+        case false => new ClassLoaderResourceAccessor(ClasspathUtilities.toLoader(cp.map(_.data)))
+      }
+
+      (url, resourceAccessor)
+
+    }
+
+    private def liquibaseInstance(changelogURL: String, db: Database, dependencyClasspath: Classpath) = {
+
+      val (changelog, resourceAccessor) = identifyChangelogLocation(changelogURL, dependencyClasspath)
+
+      new Liquibase(changelog, resourceAccessor, db)
+    }
+
+    private def database(dbURL: String, dbUsername: String, dbPassword: String,
                  dbDriver: String, dependencyClasspath: Classpath) = {
 
           CommandLineUtils.createDatabaseObject(
