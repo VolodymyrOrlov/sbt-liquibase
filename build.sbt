@@ -11,7 +11,8 @@ scalaVersion := "2.10.4"
 version := "0.1.0"
 
 libraryDependencies ++= Seq(
-  "org.liquibase" % "liquibase-core" % "3.3.5"
+  "org.liquibase" % "liquibase-core" % "3.4.1",
+  "joda-time" % "joda-time" % "2.8.1"
 )
 
 bintraySettings
