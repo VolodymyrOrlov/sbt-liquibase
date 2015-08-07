@@ -1,6 +1,6 @@
 # sbt-liquibase
 
-SBT Plugin that wraps [Liquibase](http://www.liquibase.org/) framework. 
+SBT Plugin that wraps [Liquibase](http://www.liquibase.org/) framework. So far it supports only a subset of Liquibase's commands but eventually new commands will be introduced. Also on top of existing commands we plan to add helpers which will aid in testing all changes before applying them to database. 
 
 ## Installation & Configuration
 
@@ -9,7 +9,7 @@ Add following lines in your _project/plugins.sbt_ file
 addSbtPlugin("com.sungevity.sbt" % "sbt-liquibase" % "0.1.0")
 ```
 
-Also set your databases using key
+Enumerate your databases using following structure in the _build.sbt_ file
 
 ```
 databases in sbtLiquibase := Map(
@@ -28,7 +28,7 @@ databases in sbtLiquibase := Map(
 )
 ```
 
-where _db-key-x_ is a unique key you use to refer to your database when running sbt-liquibase commands, _changelog-file1_ your changelog file. _changelog-file1_ should be either a name of the file from the classpath or an absolute path to the file on the local file system.
+Here: _db-key-x_ is a unique key that refers to your database when running sbt-liquibase commands, _changelog-file1_ is your changelog file. _changelog-file1_ should be either a name of a file from the classpath or an absolute path to a file on the local file system.
 
 You can have as many entries in the map as you want.
 
@@ -45,11 +45,12 @@ You can have as many entries in the map as you want.
 * **sbt-liquibase::tag \<tag name\>** "tags" the current database state for future rollback.
 * **sbt-liquibase::locks** lists who currently has locks on the database changelog.
 
-_sbt-liquibase::up_, _sbt-liquibase::down_, _sbt-liquibase::status_ and _sbt-liquibase::tag_ commands can be applied to all or a subset of databases listed in _databases in sbtLiquibase_ SBT setting. To select target database just list their key(s) after the command name:
+_sbt-liquibase::up_, _sbt-liquibase::down_, _sbt-liquibase::status_ and _sbt-liquibase::tag_ commands can be applied to all or a subset of databases listed in _databases in sbtLiquibase_ SBT setting. To select target database(s) just list their key(s) after a command name, e.g.:
 
 ```
 sbt "sbt-liquibase::status local"
 ```
+
 If you don't specify database instance the command will be applied to all configured instances.
 
 
